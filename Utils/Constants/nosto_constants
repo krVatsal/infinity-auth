@@ -1,0 +1,18 @@
+const nostoconstants ={
+    INVALID_PHONE_NUMBER: "The provided phone number is not valid",
+    ACCOUNT_CREATED: "Account Created Successfully",
+    ACCOUNT_EXIST:"Account already exist",
+    INVALID_OTP: "The provided otp is wrong",
+    INVALID_ENCRYPTED_TOKEN: "The providen token is not a valid token",
+    EXPIRED_OTP: "The provided otp is no longer valid",
+    OTP_TOKEN_INVALID: "Unable to verify the phone with this otp",
+
+
+    AUTH_COOKIE: "auth",
+    SPID_COOKIE: "spid",
+    CID_COOKIE: "cid",
+
+};
+
+
+module.exports=nostoconstants;

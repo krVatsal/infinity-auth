@@ -1,14 +1,13 @@
-const crypto = require('cry')
+const crypto = require('crypto');
 const UserDetail = require("../../model/DataModel/UserDetail");
-
 const sessionDetail = require("../../model/DataModel/sessionDetail");
 const redisCache = require("../../services/redisCache");
+const cryptoUtil = require("../../Utils/cryptoutil");
 const { REDIS_OTP_EXPIRY,REDIS_TOKEN_EXPIRY, DOMAIN } = require("../../config/main");
-const {ClientException,BuisnessException}  = require('../../util/exceptions');
+const {ClientException,BuisnessException}  = require('../../Utils/validators/exceptions');
 const RegionInfinityResDTO = require("../../model/resDTO/RegionInfinityResDTO");
-
-const infinityConstants = require("../../util/Constants/infinityConstant");
-const HttpErrors = require("../../util/Constants/httpErrors");
+const infinityConstants = require("../../Utils/Constants/nosto_constants");
+const HttpErrors = require("../../Utils/Constants/http_errors");
 const SessionDetail = require("../../model/DataModel/sessionDetail");
 
 
@@ -105,8 +104,7 @@ function validateOtpToken(otpToken, phone) {
   function generateAuthToken(cid,spid,role) {
     var raw_token = { cid: cid,spid:spid,role:role, time: Date.now(),randomString: cryptoUtil.generateRandomString() };
     return cryptoUtil.encrypt(JSON.stringify(raw_token));
-  }
-  function decryptToken(token){
+  }  function decryptToken(token){
     try{
       var decrypted_value = cryptoUtil.decrypt(token);
       var token_json = JSON.parse(decrypted_value);
@@ -115,16 +113,6 @@ function validateOtpToken(otpToken, phone) {
       throw new ClientException(infinityConstants.INVALID_ENCRYPTED_TOKEN);
     }
   }
-  
-function decryptToken(token) {
-  try {
-    var decrypted_value = cryptoUtil.decrypt(token);
-    var token_json = JSON.parse(decrypted_value);
-    return token_json;
-  } catch (error) {
-    throw new ClientException(infinityConstants.INVALID_ENCRYPTED_TOKEN);
-  }
-}
 
 
   function generateOTP() {

@@ -1,7 +1,6 @@
 const redis = require('redis');
 const fs = require('fs');
 const { REDIS_HOST, REDIS_TLS_KEY,REDIS_TLS_CA,REDIS_TLS_CERT,ENVIRONMENT,REDIS_PASSWORD } = require('../config/main');
-const { promisify } = require('util');
 let redisClient;
   
 async function initializeRedisClient() {

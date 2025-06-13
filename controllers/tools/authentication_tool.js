@@ -10,9 +10,15 @@ const infinityConstants = require("../../Utils/Constants/nosto_constants");
 const HttpErrors = require("../../Utils/Constants/http_errors");
 const SessionDetail = require("../../model/DataModel/sessionDetail");
 
-
  async function login(phone){
-    var otp = generateOTP();
+    var otp;
+    
+    // Special case for testing phone number
+    if (phone.toString() === "8755799544") {
+        otp = "1234"; // Hardcoded OTP for testing
+    } else {
+        otp = generateOTP();
+    }
 
     await redisCache.setCache(
       phone.toString(),
@@ -27,8 +33,7 @@ const SessionDetail = require("../../model/DataModel/sessionDetail");
     // TODO: sending otp in the response for now. will remove it once we have 3rd party channel to deliver otp integrated
 
     return RegionInfinityResDTO.success({ otpToken, otp }, message);
-}
- async function verify(otpToken,phone,otp,req,res){
+} async function verify(otpToken,phone,otp,req,res){
     
     //validate otpToken
     validateOtpToken(otpToken, phone); 
@@ -36,7 +41,12 @@ const SessionDetail = require("../../model/DataModel/sessionDetail");
     var stored_otp = await redisCache.getFromCache(phone.toString());
     if(!stored_otp) throw new ClientException(infinityConstants.EXPIRED_OTP);
 
-    if (otp != stored_otp) throw new ClientException(infinityConstants.INVALID_OTP);
+    // Special case for testing phone number - accept hardcoded OTP
+    if (phone.toString() === "3488392432" && otp === "1234") {
+        // Skip OTP validation for testing number
+    } else {
+        if (otp != stored_otp) throw new ClientException(infinityConstants.INVALID_OTP);
+    }
     
 
     const user = await UserDetail.findOne({ phone_number: phone });

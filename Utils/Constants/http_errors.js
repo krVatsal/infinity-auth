@@ -54,6 +54,17 @@ const HttpErrors = {
         name: 'PasswordRequired',
         message: 'Password is required.'
     },
+    INVALID_OTP: {
+        status: 400,
+        name: 'InvalidOtp',
+        message: 'Invalid OTP.'
+
+    },
+    INVALID_REQUEST:{
+        status: 400,
+        name: 'InvalidRequest',
+        message: 'Invalid request.'
+    },
 
     INVALID_INPUT: {
         status: 400,

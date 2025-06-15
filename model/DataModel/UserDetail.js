@@ -6,6 +6,14 @@ const userDetailSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    name: {
+        type: String,
+        default: null
+    },
+    email: {
+        type: String,
+        default: null
+    },
     is_fully_registered: {
         type: Boolean,
         default: false

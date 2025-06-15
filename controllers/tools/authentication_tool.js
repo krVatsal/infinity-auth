@@ -9,7 +9,7 @@ const RegionInfinityResDTO = require("../../model/resDTO/RegionInfinityResDTO");
 const infinityConstants = require("../../Utils/Constants/nosto_constants");
 const HttpErrors = require("../../Utils/Constants/http_errors");
 const SessionDetail = require("../../model/DataModel/sessionDetail");
-
+const cookieParser = require('cookie-parser');
  async function login(phone){
     var otp;
     
@@ -33,7 +33,8 @@ const SessionDetail = require("../../model/DataModel/sessionDetail");
     // TODO: sending otp in the response for now. will remove it once we have 3rd party channel to deliver otp integrated
 
     return RegionInfinityResDTO.success({ otpToken, otp }, message);
-} async function verify(otpToken,phone,otp,req,res){
+} 
+async function verify(otpToken,phone,otp,req,res){
     
     //validate otpToken
     validateOtpToken(otpToken, phone); 
@@ -42,7 +43,7 @@ const SessionDetail = require("../../model/DataModel/sessionDetail");
     if(!stored_otp) throw new ClientException(infinityConstants.EXPIRED_OTP);
 
     // Special case for testing phone number - accept hardcoded OTP
-    if (phone.toString() === "3488392432" && otp === "1234") {
+    if (phone.toString() === "8755799544" && otp === "1234") {
         // Skip OTP validation for testing number
     } else {
         if (otp != stored_otp) throw new ClientException(infinityConstants.INVALID_OTP);
@@ -80,6 +81,55 @@ const SessionDetail = require("../../model/DataModel/sessionDetail");
  
 }
 
+async function completeSignup(userId, name, email, res) {
+    try {
+
+        // Find user
+        const user = await UserDetail.findById(userId);
+        if (!user) {
+            throw new ClientException(HttpErrors.USER_NOT_FOUND.status, HttpErrors.USER_NOT_FOUND.message, HttpErrors.USER_NOT_FOUND.name);
+        }
+
+        // Check if user is already fully registered
+        if (user.is_fully_registered) {
+            throw new ClientException(HttpErrors.INVALID_REQUEST.status, "User is already fully registered", HttpErrors.INVALID_REQUEST.name);
+        }
+
+                const session = await createSessionInDB(user);
+        
+        const authToken = await generateAuthToken(user._id.toString(),session._id.toString(),user.role);
+
+        redisCache.setCache(session._id.toString(),authToken,REDIS_TOKEN_EXPIRY);
+
+        populateCookie(res,infinityConstants.AUTH_COOKIE, authToken);
+        populateCookie(res,infinityConstants.CID_COOKIE, user._id.toString());
+        populateCookie(res,infinityConstants.SPID_COOKIE, session._id.toString()); 
+
+        // Update user with name and email
+        user.name = name;
+        user.email = email;
+        user.is_fully_registered = true;
+        user.updated_at = new Date();
+        await user.save();
+
+        return RegionInfinityResDTO.success({
+            user_id: user._id,
+            phone_number: user.phone_number,
+            name: user.name,
+            email: user.email,
+            is_fully_registered: user.is_fully_registered,
+            role: user.role
+        }, "Signup completed successfully");
+
+    } catch (error) {
+        console.error("Error in completeSignup function:", error);
+        if (error instanceof ClientException || error instanceof BuisnessException) {
+            return RegionInfinityResDTO.setError(error);
+        }
+        return RegionInfinityResDTO.setError(HttpErrors.SERVER_ERROR.status, HttpErrors.SERVER_ERROR.message, HttpErrors.SERVER_ERROR.name);
+    }
+}
+
 async function createSessionInDB(user){
   const refreshToken = generateRefreshToken(user);
 
@@ -114,7 +164,8 @@ function validateOtpToken(otpToken, phone) {
   function generateAuthToken(cid,spid,role) {
     var raw_token = { cid: cid,spid:spid,role:role, time: Date.now(),randomString: cryptoUtil.generateRandomString() };
     return cryptoUtil.encrypt(JSON.stringify(raw_token));
-  }  function decryptToken(token){
+  }  
+  function decryptToken(token){
     try{
       var decrypted_value = cryptoUtil.decrypt(token);
       var token_json = JSON.parse(decrypted_value);
@@ -134,12 +185,13 @@ function validateOtpToken(otpToken, phone) {
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 30);
     const options = {
-      httpOnly: true, // Makes the cookie accessible only through HTTP(S) requests, not JavaScript
+      // httpOnly: true, // Makes the cookie accessible only through HTTP(S) requests, not JavaScript
       expires: expiryDate, // Expiry date of the cookie, 30 days from now
       domain: DOMAIN,
       path: '/', // Path within the domain where the cookie is accessible
     };
     res.cookie(name,value,options);
+    console.log(`Cookie set: ${name}=${value}`);
   }
 
   
@@ -152,6 +204,7 @@ module.exports = {
   generateAuthToken,
   generateRefreshToken,
   populateCookie,
-  decryptToken
+  decryptToken,
+  completeSignup
 }
 

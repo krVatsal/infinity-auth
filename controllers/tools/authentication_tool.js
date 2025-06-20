@@ -65,7 +65,7 @@ async function verify(otpToken,phone,otp,req,res){
         populateCookie(res,infinityConstants.CID_COOKIE, user._id.toString());
         populateCookie(res,infinityConstants.SPID_COOKIE, session._id.toString()); 
       
-        return RegionInfinityResDTO.success({ user, authToken, refreshToken:session.refresh_token, spid:session._id},"User already exist");
+        return RegionInfinityResDTO.success({ user, authToken, refreshToken:session.refresh_token, spid:session._id, cid: user._id},"User already exist");
       } else {
         // ACCOUNT EXIST WITH FULLY REIGSTERED - FALSE
         console.log(user); 
@@ -118,7 +118,12 @@ async function completeSignup(userId, name, email, res) {
             name: user.name,
             email: user.email,
             is_fully_registered: user.is_fully_registered,
-            role: user.role
+            role: user.role,
+            authToken:authToken,
+            refreshToken:session.refresh_token, 
+            spid:session._id, 
+            cid: user._id
+
         }, "Signup completed successfully");
 
     } catch (error) {

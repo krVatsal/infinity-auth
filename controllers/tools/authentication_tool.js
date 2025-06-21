@@ -199,8 +199,227 @@ function validateOtpToken(otpToken, phone) {
     console.log(`Cookie set: ${name}=${value}`);
   }
 
-  
-  
+  async function postProfile(req, res) {
+  const { Id, email, age } = req.body; //note that the entire body will be assigned
+  //to the user detail (email and age are destructured just for clarity)
+
+  try {
+    const user = await req.Model.findOne({ _id: Id });
+    console.log(user.is_fully_registered);
+    if (user) {
+      if (user.is_fully_registered) {
+        console.log("something here");
+        const session = await createSessionInDB(user);
+        const authToken = await generateAuthToken(
+          user._id.toString(),
+          session._id.toString()
+        );
+        res.cookie("auth", authToken);
+        res.cookie("cid", user._id);
+        res.cookie("spid", session._id);
+
+        return res.json(
+          responseModel.success(
+            {
+              user,
+              authToken,
+              refreshToken: session.refresh_token,
+              spid: session._id,
+            },
+            "User already exist"
+          )
+        );
+      } else {
+        // ACCOUNT EXIST WITH FULLY REIGSTERED - FALSE
+
+        user.is_fully_registered = true;
+        Object.assign(user.detail, req.body);
+        console.log(user.is_fully_registered);
+        await user
+          .save()
+          .then((item) => {
+            res.send(user);
+            console.log("Item saved to database");
+          })
+          .catch((err) => {
+            res.status(400).send("unable to save to database");
+          });
+      }
+    } else {
+      res.send("please login and verify first");
+    }
+  } catch (error) {
+    console.log(error);
+
+    if (error instanceof ClientException) {
+      response = responseModel.fail({
+        name: HttpErrors.INVALID_INPUT.name,
+        message: error.message,
+      });
+    } else {
+      response = responseModel.setError({
+        name: HttpErrors.SERVER_ERROR.name,
+        message: HttpErrors.SERVER_ERROR.message,
+        status: HttpErrors.SERVER_ERROR.status,
+      });
+    }
+  }
+}
+async function logout(req, res) {
+  try {
+    const { spid } = req.headers;
+
+    if (!spid) {
+      return res
+        .status(400)
+        .json(responseModel.setError(400, "SPID is required.", "InvalidInput"));
+    }
+    await sessionDetail.findByIdAndDelete(spid);
+    // Clear cookies
+    res.clearCookie(nostoConstants.AUTH_COOKIE, {
+      domain: DOMAIN,
+      path: "/",
+    });
+    res.clearCookie(nostoConstants.CID_COOKIE, {
+      domain: DOMAIN,
+      path: "/",
+    });
+    res.clearCookie(nostoConstants.SPID_COOKIE, {
+      domain: DOMAIN,
+      path: "/",
+    });
+
+    return res.json(
+      responseModel.success(
+        null,
+        "User successfully logged out. All session data cleared."
+      )
+    );
+  } catch (error) {
+    console.error("Error during logout:", error);
+
+    if (error instanceof ClientException) {
+      response = responseModel.setError({
+        name: HttpErrors.INVALID_INPUT.name,
+        message: error.message,
+      });
+    } else {
+      response = responseModel.setError({
+        name: HttpErrors.SERVER_ERROR.name,
+        message: HttpErrors.SERVER_ERROR.message,
+        status: HttpErrors.SERVER_ERROR.status,
+      });
+    }
+
+    return res.status(500).json(response);
+  }
+}
+
+async function refreshAuthToken(req, res) {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json(
+      responseModel.setError({
+        message: "Refresh token is required.",
+      })
+    );
+  }
+
+  try {
+    // Decrypt and validate the refresh token
+    const tokenData = decryptToken(refreshToken);
+    const { id: userId, role } = tokenData;
+    console.log("tokenData extracted", tokenData);
+    // Find the session associated with this refresh token
+    const session = await sessionDetail.findOne({
+      user_id: userId,
+      refresh_token: refreshToken,
+    });
+
+    if (!session) {
+      throw new ClientException(nostoConstants.INVALID_REFRESH_TOKEN);
+    }
+
+    // Generate a new access token
+    const authToken = generateAuthToken(userId, session._id.toString(), role);
+    console.log("auth token generated", authToken);
+    // Update the session's expiry time
+    session.expiry = Date.now() + 30 * 24 * 60 * 60 * 1000; // Extend by 30 days
+    await session.save();
+    console.log("session saved");
+    // Store the new auth token in Redis cache
+    await redisCache.setCache(
+      session._id.toString(),
+      authToken,
+      REDIS_TOKEN_EXPIRY
+    );
+
+    // Populate cookies with the new auth token
+    populateCookie(res, nostoConstants.AUTH_COOKIE, authToken);
+    populateCookie(res, nostoConstants.CID_COOKIE, userId);
+    populateCookie(res, nostoConstants.SPID_COOKIE, session._id.toString());
+    console.log("cookies populated");
+    return res.json(
+      responseModel.success(
+        {
+          authToken,
+          refreshToken: session.refresh_token,
+          spid: session._id,
+        },
+        "Access token refreshed successfully."
+      )
+    );
+  } catch (error) {
+    console.error("Error refreshing access token:", error);
+
+    if (error instanceof ClientException) {
+      return res.status(400).json(
+        responseModel.setError({
+          name: error.name,
+          message: error.message,
+        })
+      );
+    } else {
+      return res.status(500).json(
+        responseModel.setError({
+          name: "ServerError",
+          message: "An error occurred while refreshing the access token.",
+          status: 500,
+        })
+      );
+    }
+  }
+}
+const verifyCredentials = async (req, res) => {
+  try {
+    const { spid, cid, refreshToken } = req.headers;
+
+    console.log("SPID:", spid);
+    if (!spid || !cid || !refreshToken) {
+      return res.json(ResponseModel.setError(HttpErrors.INVALID_CREDENTIALS));
+    }
+    // const user = await UserDetail.findOne({ _id: cid });
+    const session = await SessionDetail.findOne({ _id: spid, refreshToken });
+    if (!session) {
+      return res.json(ResponseModel.setError(HttpErrors.INVALID_CREDENTIALS));
+    }
+
+    const user = await UserDetail.findOne({ _id: cid });
+    if (!user) {
+      return res.json(ResponseModel.setError(HttpErrors.INVALID_CREDENTIALS));
+    }
+
+    return res.status(200).json(
+      ResponseModel.success({
+        data: { user, session },
+        message: "Credentials verified successfully",
+      })
+    );
+  } catch (e) {
+    return res.json(ResponseModel.setError(HttpErrors.DB_ERROR));
+  }
+};
   
 module.exports = {
   login,
@@ -210,6 +429,8 @@ module.exports = {
   generateRefreshToken,
   populateCookie,
   decryptToken,
-  completeSignup
+  completeSignup,
+  refreshAuthToken,
+  verifyCredentials
 }
 
